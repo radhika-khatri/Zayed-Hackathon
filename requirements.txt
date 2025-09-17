@@ -1,0 +1,9 @@
+fastapi==0.111.1
+uvicorn==0.24.0
+motor==4.3.0
+requests==2.31.0
+pydantic==2.3.0
+python-dotenv==1.0.0
+redis==5.3.2
+firebase-admin==6.2.0
+ortools==9.8.3790
