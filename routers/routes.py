@@ -1,37 +1,30 @@
 from fastapi import APIRouter, Depends
-from services.google_maps_service import get_distance_matrix, get_nearby_recycling
-from services.or_tools_routes import optimize_route
-from services.gamification import add_eco_points
 from dependencies.firebase_auth import get_current_user
+from services.or_tools_routes import optimize_route
+from services.pydeck_service import build_route_layer, build_recycling_layer, create_map_view
 
 router = APIRouter(prefix="/routes", tags=["Routes"])
 
-@router.post("/green-route")
-async def green_route(
-    locations: list[str],
-    lat: float = None,
-    lng: float = None,
-    current_user: dict = Depends(get_current_user)
-):
-    user_id = current_user['uid']
+@router.post("/eco-map")
+async def eco_map(locations: list[tuple[float, float]], current_user: dict = Depends(get_current_user)):
+    """
+    Generate optimized eco-route + recycling centers as Pydeck JSON config
+    Input: list of (lat, lng)
+    """
+    # Mock: simple Euclidean distance matrix
+    def dist(a, b): return int(((a[0]-b[0])**2 + (a[1]-b[1])**2) ** 0.5 * 1000)
+    n = len(locations)
+    distance_matrix = [[dist(locations[i], locations[j]) for j in range(n)] for i in range(n)]
 
-    distance_matrix = get_distance_matrix(locations)
-    optimized_indices = optimize_route(distance_matrix)
-    if not optimized_indices:
-        return {"error": "Could not optimize route"}
+    route_indices = optimize_route(distance_matrix)
+    coords = [[locations[i][1], locations[i][0]] for i in route_indices]  # lng, lat
 
-    optimized_route = [locations[i] for i in optimized_indices]
-    total_distance_m = sum(distance_matrix[optimized_indices[i]][optimized_indices[i+1]] for i in range(len(optimized_indices)-1))
-    total_distance_km = total_distance_m / 1000
-    points_awarded = int(total_distance_km // 1)
+    # Example recycling points
+    recycling_points = [("Recycling Center A", locations[0][0]+0.01, locations[0][1]+0.01)]
 
-    user_update = await add_eco_points(user_id, points_awarded)
-    nearby_stops = get_nearby_recycling(lat, lng) if lat and lng else []
+    layers = [
+        build_route_layer(coords),
+        build_recycling_layer(recycling_points)
+    ]
 
-    return {
-        "optimized_route": optimized_route,
-        "total_distance_km": total_distance_km,
-        "eco_points_awarded": points_awarded,
-        "user": user_update,
-        "nearby_stops": nearby_stops
-    }
+    return create_map_view([locations[0][1], locations[0][0]], layers)
